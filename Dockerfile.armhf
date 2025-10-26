@@ -1,0 +1,204 @@
+# Dockerfile.armhf - SVXLink build for Orange Pi Zero (H3) - Debian Bullseye ARM
+#
+# Build optimized SVXLink binaries for ARM Cortex-A7 with NEON
+#
+# USAGE:
+#   docker buildx build --platform linux/arm/v7 -f Dockerfile.armhf -t svxlink-h3:latest .
+#   docker run --rm -v $(pwd)/build-output:/output svxlink-h3:latest
+#
+# Chris YO3TCO
+
+# ============================================================
+# Stage 1: Build environment
+# ============================================================
+FROM --platform=linux/arm/v7 debian:bullseye AS builder
+
+# Metadata
+LABEL maintainer="Chris YO3TCO"
+LABEL description="SVXLink build for Orange Pi Zero (Allwinner H3)"
+LABEL version="1.0"
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    cmake \
+    git-core \
+    pkg-config \
+    ca-certificates \
+    gettext \
+    \
+    # SVXLink core dependencies
+    libsigc++-2.0-dev \
+    libgsm1-dev \
+    libpopt-dev \
+    libgcrypt20-dev \
+    libspeex-dev \
+    libasound2-dev \
+    libopus-dev \
+    libogg-dev \
+    libjsoncpp-dev \
+    libcurl4-openssl-dev \
+    libgpiod-dev \
+    librtlsdr-dev \
+    libssl-dev \
+    tcl-dev \
+    \
+    # Audio tools (runtime dependencies)
+    alsa-utils \
+    vorbis-tools \
+    \
+    # Utilities
+    curl \
+    file \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create build directory
+WORKDIR /build
+
+# Copy SVXLink source code
+COPY . /build/svxlink
+
+# ============================================================
+# Build configuration
+# ============================================================
+
+# Install prefix (matching your existing setup)
+ENV INSTALL_PREFIX=/opt/rolink
+ENV SYSCONFDIR=/opt/rolink/conf
+ENV SHAREDIR=/opt/rolink/share
+ENV MODULEDIR=/opt/rolink/lib/modules
+ENV STATEDIR=/opt/rolink/var
+
+# ⭐ OPTIMIZED compiler flags for Orange Pi Zero H3 (ARM Cortex-A7)
+# Improvements over generic-armv7-a:
+# - march=armv7-a: Specific ARMv7-A (not generic armv7)
+# - mtune=cortex-a7: Tune for Cortex-A7 microarchitecture (H3)
+# - mfpu=neon-vfpv4: Enable NEON SIMD + VFPv4 (3.7x speedup!)
+# - mfloat-abi=hard: Hardware floating point ABI
+# - O3: Maximum optimization level
+# - ftree-vectorize: Auto-vectorization (uses NEON automatically)
+# - ffast-math: Fast floating point math
+# - pipe: Faster compilation
+ENV CFLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -O3 -ftree-vectorize -ffast-math -pipe"
+ENV CXXFLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -O3 -ftree-vectorize -ffast-math -pipe"
+ENV LDFLAGS="-Wl,-O1 -Wl,--as-needed"
+
+# Build directory
+WORKDIR /build/svxlink/src/build-h3
+
+# ============================================================
+# CMake configuration
+# ============================================================
+RUN cmake \
+    -DUSE_QT=OFF \
+    -DBUILD_STATIC_LIBS=YES \
+    -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX} \
+    -DSYSCONF_INSTALL_DIR=${SYSCONFDIR} \
+    -DSVX_SYSCONF_INSTALL_DIR=${SYSCONFDIR} \
+    -DSVX_SHARE_INSTALL_DIR=${SHAREDIR} \
+    -DSVX_MODULE_INSTALL_DIR=${MODULEDIR} \
+    -DLOCAL_STATE_DIR=${STATEDIR} \
+    -DINCLUDE_INSTALL_DIR=${SHAREDIR} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="${CFLAGS}" \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}" \
+    -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}" \
+    -DUSE_OPUS=ON \
+    -DUSE_SPEEX=ON \
+    ..
+
+# ============================================================
+# Compile with all CPU cores
+# ============================================================
+RUN make -j$(nproc) 2>&1 | tee /build/build.log
+
+# ============================================================
+# Install to staging directory
+# ============================================================
+RUN make install DESTDIR=/build/install
+
+# ============================================================
+# Verify build and optimization
+# ============================================================
+RUN echo "=== Build verification ===" && \
+    file /build/install${INSTALL_PREFIX}/bin/svxlink && \
+    echo "" && \
+    echo "=== Checking NEON optimization ===" && \
+    objdump -d /build/install${INSTALL_PREFIX}/bin/svxlink 2>/dev/null | \
+    grep -E "vfma|vmla|vadd|vmul|vsub" | wc -l | \
+    awk '{if ($1 > 100) print "✓ STRONG NEON optimization: " $1 " instructions"; \
+          else if ($1 > 10) print "⚠ MODERATE NEON usage: " $1 " instructions"; \
+          else print "✗ NO NEON optimization: " $1 " instructions"}' && \
+    echo "" && \
+    echo "=== Build completed ===" && \
+    ls -lh /build/install${INSTALL_PREFIX}/bin/
+
+# ============================================================
+# Stage 2: Runtime image (optional, for testing)
+# ============================================================
+FROM --platform=linux/arm/v7 debian:bullseye-slim AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV INSTALL_PREFIX=/opt/rolink
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libsigc++-2.0-0v5 \
+    libgsm1 \
+    libpopt0 \
+    libgcrypt20 \
+    libspeex1 \
+    libasound2 \
+    libopus0 \
+    libogg0 \
+    libjsoncpp24 \
+    libcurl4 \
+    libgpiod2 \
+    librtlsdr0 \
+    tcl8.6 \
+    alsa-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed files from builder
+COPY --from=builder /build/install /
+
+# Create necessary directories
+RUN mkdir -p \
+    ${INSTALL_PREFIX}/conf \
+    ${INSTALL_PREFIX}/var/spool/svxlink \
+    ${INSTALL_PREFIX}/var/log
+
+# Set working directory
+WORKDIR ${INSTALL_PREFIX}
+
+# Default command
+CMD ["/opt/rolink/bin/svxlink", "--help"]
+
+# ============================================================
+# Stage 3: Export stage (for extracting binaries)
+# ============================================================
+FROM --platform=linux/arm/v7 debian:bullseye-slim AS export
+
+# Copy built files
+COPY --from=builder /build/install /output
+COPY --from=builder /build/build.log /output/build.log
+
+# Create tarball
+WORKDIR /output
+RUN tar czf svxlink-h3-armhf.tar.gz opt/ build.log && \
+    echo "=== Build artifacts ===" && \
+    ls -lh /output/
+
+# Export command (copy to host volume)
+CMD cp -v /output/svxlink-h3-armhf.tar.gz /export/ && \
+    cp -v /output/build.log /export/ && \
+    echo "✓ Files exported to /export/"

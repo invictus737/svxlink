@@ -1,0 +1,75 @@
+# docker-compose.yml - SVXLink Docker build for Orange Pi Zero (H3)
+#
+# USAGE:
+#   # Build and export binaries:
+#   docker-compose up builder
+#
+#   # Run runtime container (for testing on ARM host):
+#   docker-compose up runtime
+#
+# OUTPUT:
+#   ./build-output/svxlink-h3-armhf.tar.gz
+#
+# Chris YO3TCO
+
+version: '3.8'
+
+services:
+  # ============================================================
+  # Builder service - Cross-compile for ARM
+  # ============================================================
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.armhf
+      target: export
+      platforms:
+        - linux/arm/v7
+    image: svxlink-h3:latest
+    container_name: svxlink-builder
+    volumes:
+      - ./build-output:/export
+    environment:
+      - TZ=UTC
+    platform: linux/arm/v7
+
+  # ============================================================
+  # Runtime service - Test built binaries (ARM only)
+  # ============================================================
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile.armhf
+      target: runtime
+      platforms:
+        - linux/arm/v7
+    image: svxlink-h3:runtime
+    container_name: svxlink-runtime
+    volumes:
+      - ./build-output/opt/rolink/conf:/opt/rolink/conf:ro
+      - ./build-output/opt/rolink/var:/opt/rolink/var
+    environment:
+      - TZ=UTC
+    platform: linux/arm/v7
+    command: /opt/rolink/bin/svxlink --version
+
+  # ============================================================
+  # Development service - Interactive shell (for debugging)
+  # ============================================================
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.armhf
+      target: builder
+      platforms:
+        - linux/arm/v7
+    image: svxlink-h3:dev
+    container_name: svxlink-dev
+    volumes:
+      - .:/build/svxlink:ro
+      - ./build-output:/output
+    working_dir: /build/svxlink/src/build-h3
+    platform: linux/arm/v7
+    entrypoint: /bin/bash
+    stdin_open: true
+    tty: true
