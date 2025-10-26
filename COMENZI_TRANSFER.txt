@@ -1,0 +1,141 @@
+═══════════════════════════════════════════════════════════════
+  COMENZI TRANSFER - SVXLINK CĂTRE ORANGE PI ZERO
+═══════════════════════════════════════════════════════════════
+
+VARIANTA 1: Transfer doar script-uri (minimal)
+───────────────────────────────────────────────────────────────
+scp build_orangepi_h3.sh pi@ORANGE_PI_IP:/home/pi/
+scp test_neon_performance.sh pi@ORANGE_PI_IP:/home/pi/
+
+
+VARIANTA 2: Transfer toate fișierele importante
+───────────────────────────────────────────────────────────────
+scp build_orangepi_h3.sh \
+    test_neon_performance.sh \
+    README_COMPILARE_RAPIDA.md \
+    COMPILARE_ORANGE_PI_H3.md \
+    PROCEDURA_CALIBRARE_OPTIMA_VAD.md \
+    pi@ORANGE_PI_IP:/home/pi/
+
+
+VARIANTA 3: Transfer întreg repository (recommended)
+───────────────────────────────────────────────────────────────
+rsync -avz --progress \
+  --exclude='.git' \
+  --exclude='src/build*' \
+  --exclude='*.o' \
+  --exclude='*.so' \
+  /private/tmp/svxlink/ pi@ORANGE_PI_IP:/home/pi/svxlink/
+
+
+═══════════════════════════════════════════════════════════════
+  PE ORANGE PI ZERO (după transfer)
+═══════════════════════════════════════════════════════════════
+
+ssh pi@ORANGE_PI_IP
+
+cd ~
+
+# Fă scripturile executabile
+chmod +x build_orangepi_h3.sh test_neon_performance.sh
+
+# Rulează build (20-30 minute)
+./build_orangepi_h3.sh
+
+# Test NEON optimization
+./test_neon_performance.sh
+
+# Start SVXLink
+sudo systemctl start svxlink
+sudo journalctl -u svxlink -f
+
+
+═══════════════════════════════════════════════════════════════
+  ÎNLOCUIEȘTE "ORANGE_PI_IP" CU IP-UL TĂU
+═══════════════════════════════════════════════════════════════
+
+Exemple:
+  - LAN: 192.168.1.100
+  - WiFi: 192.168.0.50
+  - Hostname: orangepi.local
+
+Găsește IP-ul Orange Pi:
+  - Pe Orange Pi: ifconfig | grep "inet "
+  - Pe router: check DHCP leases
+  - Scan rețea: nmap -sn 192.168.1.0/24
+
+
+═══════════════════════════════════════════════════════════════
+  VERIFICARE CONEXIUNE
+═══════════════════════════════════════════════════════════════
+
+# Test SSH connectivity
+ping ORANGE_PI_IP
+
+# Test SSH login
+ssh pi@ORANGE_PI_IP
+
+# Dacă cere parolă, adaugă SSH key (optional):
+ssh-copy-id pi@ORANGE_PI_IP
+
+
+═══════════════════════════════════════════════════════════════
+  COMENZI COPIERE RAPIDE (ready to use)
+═══════════════════════════════════════════════════════════════
+
+# Setează IP-ul tău aici:
+export OPI_IP=192.168.1.100
+
+# Transfer minimal (script-uri)
+scp build_orangepi_h3.sh test_neon_performance.sh pi@$OPI_IP:/home/pi/
+
+# Transfer complet (repository)
+rsync -avz --progress --exclude='.git' --exclude='src/build*' /private/tmp/svxlink/ pi@$OPI_IP:/home/pi/svxlink/
+
+# Conectare SSH
+ssh pi@$OPI_IP
+
+
+═══════════════════════════════════════════════════════════════
+  FIȘIERE DISPONIBILE PENTRU TRANSFER
+═══════════════════════════════════════════════════════════════
+
+Scripts (⭐ CRITICAL):
+  ✅ build_orangepi_h3.sh                  (9.7K)  - Build automat cu NEON
+  ✅ test_neon_performance.sh              (8.7K)  - Test verificare NEON
+
+Documentație (📖 RECOMMENDED):
+  📖 README_COMPILARE_RAPIDA.md            (8.8K)  - Quick start guide
+  📖 COMPILARE_ORANGE_PI_H3.md            (15K)   - Build manual + troubleshooting
+  📖 PROCEDURA_CALIBRARE_OPTIMA_VAD.md    (31K)   - Calibrare VAD pas-cu-pas
+  📖 CONFIGURATIE_REPETOR.md              (14K)   - Setup GM340 + MMDVM
+  📖 VOICE_ACTIVITY_DETECTION_ANTI_KERCHUNK.md (33K) - VAD implementation
+  📖 SVXLINK_ARCHITECTURE.md              (32K)   - Arhitectură SVXLink
+
+Configurații (se transferă după calibrare):
+  ⚙️  svxlink.conf                         - SVXLink main config (după editare)
+  ⚙️  MMDVM.ini                           - MMDVM config (după editare)
+  ⚙️  Analog_Bridge.ini                   - Analog_Bridge config (după editare)
+
+
+═══════════════════════════════════════════════════════════════
+  NEXT STEPS DUPĂ BUILD
+═══════════════════════════════════════════════════════════════
+
+1. Test NEON optimization
+   ./test_neon_performance.sh
+   Expected: >100 NEON instructions
+
+2. Configurare SVXLink
+   sudo nano /etc/svxlink/svxlink.conf
+   (vezi PROCEDURA_CALIBRARE_OPTIMA_VAD.md)
+
+3. Calibrare VAD
+   (vezi PROCEDURA_CALIBRARE_OPTIMA_VAD.md - ETAPA 2-7)
+
+4. Start în producție
+   sudo systemctl enable svxlink
+   sudo systemctl start svxlink
+
+
+═══════════════════════════════════════════════════════════════
