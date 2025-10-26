@@ -1,0 +1,159 @@
+# Dockerfile.arm64-cross - Native ARM64 with proper ARMv7 cross-compilation
+#
+# Optimized for macOS Apple Silicon
+# - Container: ARM64 (native)
+# - Cross-compile: ARMv7 for Orange Pi H3
+#
+# Chris YO3TCO
+
+FROM --platform=linux/arm64 debian:bullseye AS builder
+
+LABEL maintainer="Chris YO3TCO"
+LABEL description="SVXLink ARM64 native + ARMv7 cross-compilation"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# ============================================================
+# Install build tools and cross-compiler
+# ============================================================
+RUN dpkg --add-architecture armhf && \
+    apt-get update && apt-get install -y \
+    # Native build tools
+    build-essential \
+    cmake \
+    git-core \
+    pkg-config \
+    ca-certificates \
+    gettext \
+    file \
+    curl \
+    \
+    # Cross-compiler for ARMv7
+    crossbuild-essential-armhf \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Install development libraries for ARMv7 cross-compilation
+# ============================================================
+RUN apt-get update && apt-get install -y \
+    # ARMv7 (armhf) libraries only
+    libsigc++-2.0-dev:armhf \
+    libgsm1-dev:armhf \
+    libpopt-dev:armhf \
+    libgcrypt20-dev:armhf \
+    libspeex-dev:armhf \
+    libasound2-dev:armhf \
+    libopus-dev:armhf \
+    libogg-dev:armhf \
+    libjsoncpp-dev:armhf \
+    libcurl4-openssl-dev:armhf \
+    libgpiod-dev:armhf \
+    librtlsdr-dev:armhf \
+    libssl-dev:armhf \
+    tcl-dev:armhf \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Setup environment for cross-compilation
+# ============================================================
+ENV CC=arm-linux-gnueabihf-gcc
+ENV CXX=arm-linux-gnueabihf-g++
+ENV AR=arm-linux-gnueabihf-ar
+ENV RANLIB=arm-linux-gnueabihf-ranlib
+ENV PKG_CONFIG_PATH=""
+ENV PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig
+ENV PKG_CONFIG_SYSROOT_DIR=/
+ENV CMAKE_FIND_ROOT_PATH="/usr;/usr/arm-linux-gnueabihf"
+
+# Orange Pi H3 compiler flags
+ENV CFLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -O3 -ftree-vectorize -ffast-math -pipe"
+ENV CXXFLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -O3 -ftree-vectorize -ffast-math -pipe"
+ENV LDFLAGS="-Wl,-O1 -Wl,--as-needed"
+
+# ============================================================
+# Build configuration
+# ============================================================
+ENV INSTALL_PREFIX=/opt/rolink
+ENV SYSCONFDIR=/opt/rolink/conf
+ENV SHAREDIR=/opt/rolink/share
+ENV MODULEDIR=/opt/rolink/lib/modules
+ENV STATEDIR=/opt/rolink/var
+
+WORKDIR /build
+COPY . /build/svxlink
+
+WORKDIR /build/svxlink/src/build-h3
+
+# ============================================================
+# CMake configuration - Cross-compilation with manual paths
+# ============================================================
+RUN cmake \
+    -DCMAKE_SYSTEM_NAME=Linux \
+    -DCMAKE_SYSTEM_PROCESSOR=arm \
+    -DCMAKE_C_COMPILER=${CC} \
+    -DCMAKE_CXX_COMPILER=${CXX} \
+    -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH} \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+    -DPC_SIGC_INCLUDEDIR=/usr/include \
+    -DPC_SIGC_LIBDIR=/usr/lib/arm-linux-gnueabihf \
+    -DSIGC_INCLUDE_DIR=/usr/include/sigc++-2.0 \
+    -DSIGC_CONFIG_INCLUDE_DIR=/usr/lib/arm-linux-gnueabihf/sigc++-2.0/include \
+    -DUSE_QT=OFF \
+    -DBUILD_STATIC_LIBS=YES \
+    -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX} \
+    -DSYSCONF_INSTALL_DIR=${SYSCONFDIR} \
+    -DSVX_SYSCONF_INSTALL_DIR=${SYSCONFDIR} \
+    -DSVX_SHARE_INSTALL_DIR=${SHAREDIR} \
+    -DSVX_MODULE_INSTALL_DIR=${MODULEDIR} \
+    -DLOCAL_STATE_DIR=${STATEDIR} \
+    -DINCLUDE_INSTALL_DIR=${SHAREDIR} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="${CFLAGS}" \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}" \
+    -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}" \
+    -DUSE_OPUS=ON \
+    -DUSE_SPEEX=ON \
+    ..
+
+# ============================================================
+# Compile (native ARM64 speed!)
+# ============================================================
+RUN make -j$(nproc) 2>&1 | tee /build/build.log
+
+# ============================================================
+# Install
+# ============================================================
+RUN make install DESTDIR=/build/install
+
+# ============================================================
+# Verify
+# ============================================================
+RUN echo "=== Build verification ===" && \
+    file /build/install${INSTALL_PREFIX}/bin/svxlink && \
+    echo "" && \
+    echo "=== Checking NEON optimization ===" && \
+    ${AR/ar/objdump} -d /build/install${INSTALL_PREFIX}/bin/svxlink 2>/dev/null | \
+    grep -E "vfma|vmla|vadd|vmul|vsub" | wc -l | \
+    awk '{if ($1 > 100) print "✓ STRONG NEON optimization: " $1 " instructions"; \
+          else if ($1 > 10) print "⚠ MODERATE NEON usage: " $1 " instructions"; \
+          else print "✗ NO NEON optimization: " $1 " instructions"}' && \
+    echo ""
+
+# ============================================================
+# Export stage
+# ============================================================
+FROM --platform=linux/arm64 debian:bullseye-slim AS export
+
+COPY --from=builder /build/install /output
+COPY --from=builder /build/build.log /output/build.log
+
+WORKDIR /output
+RUN tar czf svxlink-h3-armhf.tar.gz opt/ build.log
+
+CMD cp -v /output/svxlink-h3-armhf.tar.gz /export/ && \
+    cp -v /output/build.log /export/ && \
+    echo "✓ Files exported to /export/"
