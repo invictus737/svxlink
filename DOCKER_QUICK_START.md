@@ -4,18 +4,47 @@
 
 Compilează SVXLink pentru Orange Pi Zero (H3) **pe macOS** folosind Docker.
 
+**🚀 IMPORTANT pentru macOS Apple Silicon (M1/M2/M3):**
+- **COMPILARE NATIVĂ ARM** (NU emulation!)
+- **5-15 minute** build time (foarte rapid!)
+- Folosește script: `docker-build-h3-native-arm.sh`
+
 ---
 
 ## Metode Disponibile
 
-### Metodă 1: Script Simplificat (RECOMMENDED)
+### Metodă 1: Native ARM (macOS Apple Silicon) ⭐ FASTEST
+
+**Folosește:** `docker-build-h3-native-arm.sh`
+
+**Pentru:** macOS M1/M2/M3 (Apple Silicon)
+
+**Avantaje:**
+- ✅ **COMPILARE NATIVĂ** (NU emulation!)
+- ✅ **CEL MAI RAPID** (5-15 minute)
+- ✅ Auto-detect platform
+- ✅ Verificare NEON automată
+
+**Rulare:**
+```bash
+cd /private/tmp/svxlink
+./docker-build-h3-native-arm.sh
+```
+
+**Timp:** 5-15 minute ⚡
+
+---
+
+### Metodă 2: Script Simplificat (Universal)
 
 **Folosește:** `docker-build-h3-simple.sh`
+
+**Pentru:** Orice platform (macOS Intel, Linux)
 
 **Avantaje:**
 - ✅ Nu necesită Docker buildx
 - ✅ Funcționează cu Docker Desktop standard
-- ✅ Mai simplu și mai rapid de setup
+- ✅ Mai simplu de setup
 
 **Rulare:**
 ```bash
@@ -23,11 +52,14 @@ cd /private/tmp/svxlink
 ./docker-build-h3-simple.sh
 ```
 
-**Timp:** 20-40 minute (depinde de CPU)
+**Timp:**
+- macOS Apple Silicon: 5-15 min (native ARM)
+- macOS Intel: 20-40 min (QEMU emulation)
+- Linux x86_64: 30-50 min (QEMU emulation)
 
 ---
 
-### Metodă 2: Script Buildx Complet
+### Metodă 3: Script Buildx Complet
 
 **Folosește:** `docker-build-h3.sh`
 
