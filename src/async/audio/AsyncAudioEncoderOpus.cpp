@@ -129,7 +129,7 @@ AudioEncoderOpus::AudioEncoderOpus(void)
   setFrameSize(20);
   setBitrate(20000);
   enableVbr(true);
-  setMaxBandwidth(OPUS_BANDWIDTH_MEDIUMBAND);
+  setMaxBandwidth(OPUS_BANDWIDTH_WIDEBAND);  // Changed: MEDIUMBAND → WIDEBAND
   setBandwidth(OPUS_AUTO);
   setSignalType(OPUS_SIGNAL_VOICE);
   enableDtx(false);
@@ -180,6 +180,22 @@ void AudioEncoderOpus::setOption(const std::string &name,
   else if (name == "CVBR")
   {
     enableConstrainedVbr(atoi(value.c_str()) != 0);
+  }
+  else if (name == "MAX_BANDWIDTH")
+  {
+    opus_int32 bw = parseBandwidth(value);
+    if (bw != -1)
+    {
+      setMaxBandwidth(bw);
+    }
+  }
+  else if (name == "BANDWIDTH")
+  {
+    opus_int32 bw = parseBandwidth(value);
+    if (bw != -1)
+    {
+      setBandwidth(bw);
+    }
   }
   else
   {
@@ -573,6 +589,42 @@ void AudioEncoderOpus::setFramesPerPacket(unsigned fpp)
   frames_per_packet = fpp;
 } /* AudioEncoderOpus::setFramesPerPacket */
 #endif
+
+
+opus_int32 AudioEncoderOpus::parseBandwidth(const std::string &bw_str)
+{
+  if (bw_str == "AUTO")
+  {
+    return OPUS_AUTO;
+  }
+  else if (bw_str == "NARROWBAND")
+  {
+    return OPUS_BANDWIDTH_NARROWBAND;
+  }
+  else if (bw_str == "MEDIUMBAND")
+  {
+    return OPUS_BANDWIDTH_MEDIUMBAND;
+  }
+  else if (bw_str == "WIDEBAND")
+  {
+    return OPUS_BANDWIDTH_WIDEBAND;
+  }
+  else if (bw_str == "SUPERWIDEBAND")
+  {
+    return OPUS_BANDWIDTH_SUPERWIDEBAND;
+  }
+  else if (bw_str == "FULLBAND")
+  {
+    return OPUS_BANDWIDTH_FULLBAND;
+  }
+  else
+  {
+    cerr << "*** WARNING AudioEncoderOpus: Invalid bandwidth \""
+         << bw_str << "\". Valid values: AUTO, NARROWBAND, MEDIUMBAND, "
+         << "WIDEBAND, SUPERWIDEBAND, FULLBAND\n";
+    return -1;
+  }
+} /* AudioEncoderOpus::parseBandwidth */
 
 
 const char *AudioEncoderOpus::bandwidthStr(opus_int32 bw)

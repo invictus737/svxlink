@@ -376,6 +376,13 @@ class AudioEncoderOpus : public AudioEncoder
 #endif 
     
     /**
+     * @brief   Parse a bandwidth string and return the corresponding Opus constant
+     * @param   bw_str The bandwidth string (AUTO, NARROWBAND, MEDIUMBAND, WIDEBAND, SUPERWIDEBAND, FULLBAND)
+     * @returns Returns the Opus bandwidth constant or -1 on error
+     */
+    static opus_int32 parseBandwidth(const std::string &bw_str);
+
+    /**
      * @brief   Translate a bandwidth id to a string
      * @param   bw The bandwidth id
      * @returns Returns the string corresponding to the given bandwidth id
